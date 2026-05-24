@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>番茄钟 - Pomodoro Timer</title>
+<style>
+  :root {
+    --bg: #0f0f1a;
+    --surface: #1a1a2e;
+    --surface2: #222240;
+    --text: #e0e0f0;
+    --text-dim: #8888aa;
+    --focus: #ff6b6b;
+    --focus-glow: rgba(255, 107, 107, 0.3);
+    --short-break: #4ecdc4;
+    --short-break-glow: rgba(78, 205, 196, 0.3);
+    --long-break: #45b7d1;
+    --long-break-glow: rgba(69, 183, 209, 0.3);
+    --ring-bg: #222240;
+    --radius: 16px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex; justify-content: center; align-items: center;
+    min-height: 100vh;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .app {
+    background: var(--surface);
+    border-radius: 24px;
+    padding: 48px 40px 40px;
+    width: 420px;
+    box-shadow: 0 24px 80px rgba(0,0,0,0.4);
+    display: flex; flex-direction: column; align-items: center;
+    gap: 32px;
+  }
+
+  .modes {
+    display: flex;
+    background: var(--surface2);
+    border-radius: 12px;
+    padding: 4px;
+    gap: 4px;
+    width: 100%;
+  }
+
+  .mode-btn {
+    flex: 1;
+    padding: 10px 8px;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-dim);
+    background: transparent;
+    transition: all 0.25s ease;
+    white-space: nowrap;
+  }
+
+  .mode-btn:hover { color: var(--text); }
+  .mode-btn.active {
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  }
+  .mode-btn.active.focus { color: var(--focus); }
+  .mode-btn.active.short { color: var(--short-break); }
+  .mode-btn.active.long { color: var(--long-break); }
+
+  .timer-ring {
+    position: relative;
+    width: 280px; height: 280px;
+  }
+
+  .timer-ring svg {
+    width: 100%; height: 100%;
+    transform: rotate(-90deg);
+  }
+
+  .ring-bg {
+    fill: none;
+    stroke: var(--ring-bg);
+    stroke-width: 8;
+  }
+
+  .ring-progress {
+    fill: none;
+    stroke-width: 8;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 0.3s linear, stroke 0.4s ease;
+  }
+
+  .ring-progress.focus { stroke: var(--focus); }
+  .ring-progress.short { stroke: var(--short-break); }
+  .ring-progress.long { stroke: var(--long-break); }
+
+  .timer-display {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+  }
+
+  .time {
+    font-size: 64px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -2px;
+    line-height: 1;
+    color: var(--text);
+  }
+
+  .time.paused { opacity: 0.6; }
+
+  .status {
+    font-size: 14px;
+    color: var(--text-dim);
+    margin-top: 6px;
+    font-weight: 500;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  .controls {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+  }
+
+  .btn {
+    border: none;
+    cursor: pointer;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.2s ease;
+  }
+
+  .btn:active { transform: scale(0.93); }
+
+  .btn-main {
+    width: 64px; height: 64px;
+    font-size: 22px;
+    color: #fff;
+    box-shadow: 0 8px 24px var(--focus-glow);
+  }
+
+  .btn-main.focus { background: var(--focus); box-shadow: 0 8px 24px var(--focus-glow); }
+  .btn-main.short { background: var(--short-break); box-shadow: 0 8px 24px var(--short-break-glow); }
+  .btn-main.long { background: var(--long-break); box-shadow: 0 8px 24px var(--long-break-glow); }
+
+  .btn-secondary {
+    width: 44px; height: 44px;
+    font-size: 16px;
+    background: var(--surface2);
+    color: var(--text-dim);
+  }
+  .btn-secondary:hover { color: var(--text); background: #2a2a50; }
+
+  .stats {
+    display: flex;
+    gap: 32px;
+  }
+
+  .stat {
+    text-align: center;
+  }
+
+  .stat-value {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .stat-label {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 2px;
+    letter-spacing: 0.5px;
+  }
+
+  .settings-row {
+    display: flex;
+    gap: 16px;
+    width: 100%;
+  }
+
+  .setting {
+    flex: 1;
+    display: flex; flex-direction: column;
+    gap: 4px;
+  }
+
+  .setting label {
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 0.5px;
+  }
+
+  .setting input {
+    background: var(--surface2);
+    border: 1px solid transparent;
+    border-radius: 8px;
+    padding: 8px 10px;
+    color: var(--text);
+    font-size: 14px;
+    font-family: inherit;
+    width: 100%;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .setting input:focus {
+    border-color: var(--focus);
+  }
+
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .toggle-label {
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+
+  .toggle {
+    width: 48px; height: 28px;
+    background: var(--surface2);
+    border-radius: 14px;
+    cursor: pointer;
+    position: relative;
+    transition: background 0.2s;
+  }
+
+  .toggle.on { background: var(--focus); }
+
+  .toggle::after {
+    content: '';
+    position: absolute;
+    top: 3px; left: 3px;
+    width: 22px; height: 22px;
+    background: #fff;
+    border-radius: 50%;
+    transition: transform 0.2s;
+  }
+
+  .toggle.on::after { transform: translateX(20px); }
+
+  .shortcuts-hint {
+    font-size: 11px;
+    color: var(--text-dim);
+    opacity: 0.5;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="modes">
+    <button class="mode-btn active focus" data-mode="focus">🍅 专注</button>
+    <button class="mode-btn short" data-mode="short">☕ 短休息</button>
+    <button class="mode-btn long" data-mode="long">🌿 长休息</button>
+  </div>
+
+  <div class="timer-ring">
+    <svg viewBox="0 0 280 280">
+      <circle class="ring-bg" cx="140" cy="140" r="132"/>
+      <circle class="ring-progress focus" cx="140" cy="140" r="132"
+              stroke-dasharray="829.38" stroke-dashoffset="0"/>
+    </svg>
+    <div class="timer-display">
+      <div class="time">25:00</div>
+      <div class="status">准备开始</div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="btn btn-secondary" id="btnReset" title="重置 (R)">↺</button>
+    <button class="btn btn-main focus" id="btnStart" title="开始/暂停 (空格)">▶</button>
+    <button class="btn btn-secondary" id="btnSkip" title="跳过 (→)">⏭</button>
+  </div>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-value" id="pomodoroCount">0</div>
+      <div class="stat-label">完成番茄</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value" id="sessionRound">1/4</div>
+      <div class="stat-label">当前轮次</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value" id="totalFocusMin">0m</div>
+      <div class="stat-label">今日专注</div>
+    </div>
+  </div>
+
+  <div class="settings-row">
+    <div class="setting">
+      <label>专注时长 (分)</label>
+      <input type="number" id="focusDuration" value="25" min="1" max="120">
+    </div>
+    <div class="setting">
+      <label>短休息 (分)</label>
+      <input type="number" id="shortBreakDuration" value="5" min="1" max="60">
+    </div>
+    <div class="setting">
+      <label>长休息 (分)</label>
+      <input type="number" id="longBreakDuration" value="15" min="1" max="60">
+    </div>
+  </div>
+
+  <div class="toggle-row">
+    <span class="toggle-label">自动开始下一轮</span>
+    <div class="toggle on" id="toggleAutoStart"></div>
+  </div>
+
+  <div class="toggle-row">
+    <span class="toggle-label">声音提醒</span>
+    <div class="toggle on" id="toggleSound"></div>
+  </div>
+
+  <div class="shortcuts-hint">空格 开始/暂停 · R 重置 · → 跳过</div>
+</div>
+
+<script>
+const CIRCUMFERENCE = 2 * Math.PI * 132; // ~829.38
+
+const DURATIONS = {
+  focus: 25 * 60,
+  short: 5 * 60,
+  long: 15 * 60,
+};
+
+const MODE_LABELS = {
+  focus: '专注中',
+  short: '休息中',
+  long: '长休息中',
+};
+
+const MODE_CLASSES = {
+  focus: 'focus',
+  short: 'short',
+  long: 'long',
+};
+
+const MODE_EMOJI = {
+  focus: '🍅',
+  short: '☕',
+  long: '🌿',
+};
+
+let state = {
+  mode: 'focus',
+  timeLeft: DURATIONS.focus,
+  totalSeconds: DURATIONS.focus,
+  running: false,
+  pomodoroCount: 0,
+  sessionInRound: 1,
+  totalFocusSeconds: 0,
+  autoStart: true,
+  soundEnabled: true,
+};
+
+// DOM refs
+const timeEl = document.querySelector('.time');
+const statusEl = document.querySelector('.status');
+const ringEl = document.querySelector('.ring-progress');
+const btnStart = document.getElementById('btnStart');
+const btnMain = document.querySelector('.btn-main');
+const pomodoroCountEl = document.getElementById('pomodoroCount');
+const sessionRoundEl = document.getElementById('sessionRound');
+const totalFocusMinEl = document.getElementById('totalFocusMin');
+const toggleAutoStart = document.getElementById('toggleAutoStart');
+const toggleSound = document.getElementById('toggleSound');
+
+// Audio context for beep
+let audioCtx = null;
+
+function getAudioCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+
+function playBeep(freq, duration, type = 'sine') {
+  if (!state.soundEnabled) return;
+  try {
+    const ctx = getAudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, ctx.currentTime);
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + duration);
+  } catch (e) { /* ignore audio errors */ }
+}
+
+function playAlarm() {
+  if (!state.soundEnabled) return;
+  // Three-beep pattern
+  setTimeout(() => playBeep(880, 0.15), 0);
+  setTimeout(() => playBeep(880, 0.15), 200);
+  setTimeout(() => playBeep(880, 0.3), 400);
+}
+
+function notify(title, body) {
+  if (Notification.permission === 'granted') {
+    new Notification(title, { body, icon: '🍅' });
+  } else if (Notification.permission === 'default') {
+    Notification.requestPermission().then(p => {
+      if (p === 'granted') new Notification(title, { body, icon: '🍅' });
+    });
+  }
+}
+
+function updateDisplay() {
+  const m = Math.floor(state.timeLeft / 60);
+  const s = state.timeLeft % 60;
+  timeEl.textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+
+  // Update progress ring
+  const progress = state.timeLeft / state.totalSeconds;
+  const offset = CIRCUMFERENCE * (1 - progress);
+  ringEl.setAttribute('stroke-dashoffset', offset);
+
+  // Update time class
+  timeEl.className = 'time' + (!state.running ? ' paused' : '');
+
+  // Update status
+  statusEl.textContent = state.running ? MODE_LABELS[state.mode] : '暂停中';
+}
+
+function updateModeUI() {
+  // Mode buttons
+  document.querySelectorAll('.mode-btn').forEach(b => {
+    b.classList.remove('active', 'focus', 'short', 'long');
+    if (b.dataset.mode === state.mode) {
+      b.classList.add('active', MODE_CLASSES[state.mode]);
+    }
+  });
+
+  // Progress ring color
+  ringEl.className = 'ring-progress ' + MODE_CLASSES[state.mode];
+
+  // Main button color
+  btnMain.className = 'btn btn-main ' + MODE_CLASSES[state.mode];
+
+  // Title
+  document.title = `${MODE_EMOJI[state.mode]} ${timeEl.textContent} - 番茄钟`;
+}
+
+function updateStats() {
+  pomodoroCountEl.textContent = state.pomodoroCount;
+  sessionRoundEl.textContent = `${state.sessionInRound}/4`;
+  const mins = Math.floor(state.totalFocusSeconds / 60);
+  totalFocusMinEl.textContent = mins + 'm';
+}
+
+function updateUI() {
+  updateDisplay();
+  updateModeUI();
+  updateStats();
+  document.title = `${MODE_EMOJI[state.mode]} ${timeEl.textContent} - 番茄钟`;
+}
+
+function switchMode(mode) {
+  state.mode = mode;
+  state.totalSeconds = DURATIONS[mode];
+  state.timeLeft = DURATIONS[mode];
+  state.running = false;
+  btnStart.textContent = '▶';
+  updateUI();
+}
+
+function skipToNext() {
+  state.running = false;
+  if (state.mode === 'focus') {
+    // After focus, determine break type
+    state.pomodoroCount++;
+    state.totalFocusSeconds += DURATIONS.focus - state.timeLeft;
+    if (state.sessionInRound >= 4) {
+      switchMode('long');
+      state.sessionInRound = 1;
+    } else {
+      switchMode('short');
+      state.sessionInRound++;
+    }
+    notify('🍅 专注时间结束！', '休息一下吧～');
+    playAlarm();
+  } else {
+    // After break, go to focus
+    switchMode('focus');
+  }
+  if (state.autoStart) {
+    startTimer();
+  }
+}
+
+function onTimerComplete() {
+  state.running = false;
+  if (state.mode === 'focus') {
+    state.pomodoroCount++;
+    state.totalFocusSeconds += DURATIONS[state.mode];
+    notify('🍅 番茄完成！', '太棒了，休息一下吧～');
+    playAlarm();
+    if (state.sessionInRound >= 4) {
+      switchMode('long');
+      state.sessionInRound = 1;
+    } else {
+      switchMode('short');
+    }
+    if (state.autoStart) startTimer();
+  } else {
+    notify('⏰ 休息结束！', '开始新的番茄吧～');
+    playAlarm();
+    switchMode('focus');
+    if (state.autoStart) startTimer();
+  }
+}
+
+let intervalId = null;
+
+function startTimer() {
+  if (state.timeLeft <= 0) {
+    state.timeLeft = state.totalSeconds;
+    updateUI();
+  }
+  state.running = true;
+  btnStart.textContent = '⏸';
+  updateUI();
+
+  intervalId = setInterval(() => {
+    state.timeLeft--;
+    if (state.timeLeft <= 0) {
+      clearInterval(intervalId);
+      intervalId = null;
+      state.timeLeft = 0;
+      updateUI();
+      onTimerComplete();
+    }
+    updateUI();
+  }, 1000);
+}
+
+function pauseTimer() {
+  state.running = false;
+  btnStart.textContent = '▶';
+  if (intervalId) {
+    clearInterval(intervalId);
+    intervalId = null;
+  }
+  updateUI();
+}
+
+function toggleTimer() {
+  if (state.running) {
+    pauseTimer();
+  } else {
+    startTimer();
+  }
+}
+
+function resetTimer() {
+  pauseTimer();
+  state.timeLeft = state.totalSeconds;
+  updateUI();
+}
+
+// Event listeners
+btnStart.addEventListener('click', toggleTimer);
+
+document.getElementById('btnReset').addEventListener('click', resetTimer);
+
+document.getElementById('btnSkip').addEventListener('click', () => {
+  if (state.running) clearInterval(intervalId);
+  skipToNext();
+});
+
+document.querySelectorAll('.mode-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (state.running) {
+      clearInterval(intervalId);
+      intervalId = null;
+    }
+    switchMode(btn.dataset.mode);
+  });
+});
+
+// Settings inputs
+document.getElementById('focusDuration').addEventListener('change', function() {
+  const v = Math.max(1, Math.min(120, parseInt(this.value) || 25));
+  this.value = v;
+  DURATIONS.focus = v * 60;
+  if (state.mode === 'focus') {
+    state.totalSeconds = DURATIONS.focus;
+    state.timeLeft = DURATIONS.focus;
+    updateUI();
+  }
+});
+
+document.getElementById('shortBreakDuration').addEventListener('change', function() {
+  const v = Math.max(1, Math.min(60, parseInt(this.value) || 5));
+  this.value = v;
+  DURATIONS.short = v * 60;
+  if (state.mode === 'short') {
+    state.totalSeconds = DURATIONS.short;
+    state.timeLeft = DURATIONS.short;
+    updateUI();
+  }
+});
+
+document.getElementById('longBreakDuration').addEventListener('change', function() {
+  const v = Math.max(1, Math.min(60, parseInt(this.value) || 15));
+  this.value = v;
+  DURATIONS.long = v * 60;
+  if (state.mode === 'long') {
+    state.totalSeconds = DURATIONS.long;
+    state.timeLeft = DURATIONS.long;
+    updateUI();
+  }
+});
+
+// Toggles
+toggleAutoStart.addEventListener('click', function() {
+  state.autoStart = !state.autoStart;
+  this.classList.toggle('on', state.autoStart);
+});
+
+toggleSound.addEventListener('click', function() {
+  state.soundEnabled = !state.soundEnabled;
+  this.classList.toggle('on', state.soundEnabled);
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  switch (e.code) {
+    case 'Space':
+      e.preventDefault();
+      toggleTimer();
+      break;
+    case 'KeyR':
+      resetTimer();
+      break;
+    case 'ArrowRight':
+      if (state.running) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+      skipToNext();
+      break;
+  }
+});
+
+// Request notification permission on load
+if (Notification.permission === 'default') {
+  Notification.requestPermission();
+}
+
+// Initialize
+updateUI();
+
+// Wake lock to prevent screen sleep
+let wakeLock = null;
+async function requestWakeLock() {
+  try {
+    if ('wakeLock' in navigator && state.running) {
+      wakeLock = await navigator.wakeLock.request('screen');
+    }
+  } catch (e) { /* not supported */ }
+}
+async function releaseWakeLock() {
+  if (wakeLock) {
+    try { await wakeLock.release(); } catch (e) {}
+    wakeLock = null;
+  }
+}
+
+const origStart = startTimer;
+startTimer = function() {
+  origStart();
+  requestWakeLock();
+};
+
+const origPause = pauseTimer;
+pauseTimer = function() {
+  origPause();
+  releaseWakeLock();
+};
+</script>
+</body>
+</html>
